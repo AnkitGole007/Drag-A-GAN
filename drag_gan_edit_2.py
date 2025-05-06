@@ -15,7 +15,8 @@ def drag_gan_edit(
     device="cuda",
     is_w_input=False,
     log_resolution=7,
-    stopping_threshold=2.0
+    stopping_threshold=2.0,
+    return_intermediates=False
 ):
     if is_w_input:
         w = initial_latent.detach().clone().requires_grad_(True)
@@ -43,6 +44,7 @@ def drag_gan_edit(
 
     # Start point tracking
     current_points = source_points.copy()
+    intermediate_images = []
 
     for step in range(num_steps):
         optimizer.zero_grad()
@@ -73,6 +75,8 @@ def drag_gan_edit(
                 src_feat = feat[:, :, ys, xs]
                 tgt_feat = feat[:, :, yt, xt]
                 loss += torch.norm(src_feat - tgt_feat, p=2)
+                l2_penalty = 0.005 * torch.norm(w, p=2)
+                loss += l2_penalty
 
                 # Gradually update source toward target
                 dx = int(0.2 * (x_t - x_s))
@@ -89,8 +93,18 @@ def drag_gan_edit(
                 new_points.append((x_s, y_s))  # fallback
 
         current_points = new_points
-
         loss.backward()
         optimizer.step()
 
-    return img.detach().cpu(), w.detach().cpu()
+        if return_intermediates and step % 100 == 0:
+            with torch.no_grad():
+                img_vis = (img * 255).clamp(0, 255).byte()
+                intermediate_images.append(img_vis.cpu())
+
+    final_img = img.detach().cpu()
+    final_w = w.detach().cpu()
+
+    if return_intermediates:
+        return final_img, final_w, intermediate_images
+    else:
+        return final_img, final_w
