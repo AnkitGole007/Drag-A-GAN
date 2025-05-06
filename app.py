@@ -80,8 +80,10 @@ if st.session_state.last_img is not None and not st.session_state.edit_done:
         if len(objects) == 2:
             scale_x = img_w / canvas_width
             scale_y = img_h / canvas_height
-            source = (int(objects[0]["left"] * scale_x), int(objects[0]["top"] * scale_y))
-            target = (int(objects[1]["left"] * scale_x), int(objects[1]["top"] * scale_y))
+            points = sorted(objects, key=lambda obj: obj["top"])  # Y-sort: lower = source
+            source = (int(points[1]["left"] * scale_x), int(points[1]["top"] * scale_y))  # lower point
+            target = (int(points[0]["left"] * scale_x), int(points[0]["top"] * scale_y))  # upper point
+
             st.write(f"Source: {source}, Target: {target}")
 
             steps = st.slider("Number of optimization steps", min_value=100, max_value=3000, step=100, value=1000)
@@ -96,20 +98,31 @@ if st.session_state.last_img is not None and not st.session_state.edit_done:
 
             if st.button("Run DragGAN Edit"):
                 with st.spinner("Optimizing with tracked point movement..."):
-                    img_tensor, w = drag_gan_edit(
+                    img_tensor, w, intermediates = drag_gan_edit(
                         gen, mapping_network, st.session_state.z, [source], [target],
                         num_steps=steps,
                         lr=lr,
                         device=DEVICE,
                         is_w_input=False,
                         log_resolution=LOG_RESOLUTION,
-                        stopping_threshold=threshold
+                        stopping_threshold=threshold,
+                        return_intermediates=True  # ENABLE TRACKING
                     )
-                last_img = img_tensor.permute(1, 2, 0).numpy()
-                last_img = (last_img * 255).astype(np.uint8)
-                st.session_state.last_img = last_img
+
+                final_img = img_tensor.permute(1, 2, 0).numpy()
+                final_img = (final_img * 255).astype(np.uint8)
+                st.session_state.last_img = final_img
                 st.session_state.edit_done = True
+
                 st.success("Editing complete!")
+
+                # Display all intermediate steps
+                st.subheader("Geometric Transformation Steps:")
+                st.image(
+                    [img.permute(1, 2, 0).numpy() for img in intermediates],
+                    caption=[f"Step {i*100}" for i in range(len(intermediates))],
+                    use_column_width=True
+                )
 
 
 if st.session_state.edit_done:
