@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from PIL import Image
 import streamlit as st
-from drag_gan_edit import drag_gan_edit
+from drag_gan_edit_2 import drag_gan_edit
 from streamlit_drawable_canvas import st_canvas
 from StyleGAN2_Implementation import Generator, MappingNetwork
 
@@ -84,11 +84,27 @@ if st.session_state.last_img is not None and not st.session_state.edit_done:
             target = (int(objects[1]["left"] * scale_x), int(objects[1]["top"] * scale_y))
             st.write(f"Source: {source}, Target: {target}")
 
+            steps = st.slider("Number of optimization steps", min_value=100, max_value=3000, step=100, value=1000)
+            log_lr = st.slider("Learning Rate (10^x)", min_value=-5.0, max_value=-1.0, step=0.1, value=-3.0, format="%.1f")
+            lr = 10 ** log_lr
+            st.write(f"Learning Rate: {lr:.5e}")
+
+            # New tracking-specific parameter
+            threshold = st.slider("Stopping threshold (px)", min_value=1.0, max_value=10.0, value=2.0, step=0.5)
+
+
+
             if st.button("Run DragGAN Edit"):
-                img_tensor, w = drag_gan_edit(
-                    gen, mapping_network, st.session_state.z, [source], [target],
-                    device=DEVICE, is_w_input=False, log_resolution=LOG_RESOLUTION
-                )
+                with st.spinner("Optimizing with tracked point movement..."):
+                    img_tensor, w = drag_gan_edit(
+                        gen, mapping_network, st.session_state.z, [source], [target],
+                        num_steps=steps,
+                        lr=lr,
+                        device=DEVICE,
+                        is_w_input=False,
+                        log_resolution=LOG_RESOLUTION,
+                        stopping_threshold=threshold
+                    )
                 last_img = img_tensor.permute(1, 2, 0).numpy()
                 last_img = (last_img * 255).astype(np.uint8)
                 st.session_state.last_img = last_img
